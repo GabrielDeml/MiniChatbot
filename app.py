@@ -17,6 +17,13 @@ from transformers import GPT2Tokenizer
 # Import model components from training script
 from train_chatbot import Transformer, Config
 
+# Try to import spaces for ZeroGPU support (only available on HF Spaces)
+try:
+    import spaces
+    ZERO_GPU_AVAILABLE = True
+except ImportError:
+    ZERO_GPU_AVAILABLE = False
+
 
 def load_model():
     """Load the trained model and tokenizer."""
@@ -117,21 +124,45 @@ def generate_response(model, tokenizer, device, input_text, temperature=0.8, max
         return tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
 
-# Load model globally
-print("Loading model...")
-MODEL, TOKENIZER, DEVICE = load_model()
-print(f"Model loaded on {DEVICE}")
+# Lazy loading for ZeroGPU compatibility
+# Model is loaded on first use, not at import time
+MODEL = None
+TOKENIZER = None
+DEVICE = None
 
 
-def chat(message, history, temperature, max_length):
-    """Chat function for Gradio interface."""
+def get_model():
+    """Lazy load the model (for ZeroGPU compatibility)."""
+    global MODEL, TOKENIZER, DEVICE
+    if MODEL is None:
+        print("Loading model...")
+        MODEL, TOKENIZER, DEVICE = load_model()
+        print(f"Model loaded on {DEVICE}")
+    return MODEL, TOKENIZER, DEVICE
+
+
+def _chat_impl(message, history, temperature, max_length):
+    """Chat implementation."""
+    model, tokenizer, device = get_model()
     response = generate_response(
-        MODEL, TOKENIZER, DEVICE,
+        model, tokenizer, device,
         message,
         temperature=temperature,
         max_length=int(max_length)
     )
     return response
+
+
+# Apply ZeroGPU decorator if available
+if ZERO_GPU_AVAILABLE:
+    @spaces.GPU
+    def chat(message, history, temperature, max_length):
+        """Chat function for Gradio interface (with ZeroGPU)."""
+        return _chat_impl(message, history, temperature, max_length)
+else:
+    def chat(message, history, temperature, max_length):
+        """Chat function for Gradio interface."""
+        return _chat_impl(message, history, temperature, max_length)
 
 
 def clear_chat():
@@ -161,7 +192,8 @@ with gr.Blocks(
             chatbot = gr.Chatbot(
                 label="Conversation",
                 height=400,
-                show_copy_button=True
+                show_copy_button=True,
+                type="tuples"  # Required for Gradio 4.x compatibility
             )
             
             with gr.Row():
