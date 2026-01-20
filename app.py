@@ -105,7 +105,7 @@ else:
 with gr.Blocks(title="Mini Chatbot", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
     # Mini Chatbot
-    A compact Transformer chatbot (~5M parameters) optimized for efficiency.
+    An ultra-compact GPT-style chatbot (~1M parameters) optimized for efficiency.
     """)
     
     with gr.Row():
